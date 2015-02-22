@@ -1,0 +1,68 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Thomas How"
+date: "Monday, February 23, 2015"
+output: html_document
+---
+
+## Data Loading
+
+First is to load the data and also the library.  The seed value (1405) has been set to make it reproducible.  the na.strings removed the ("#DIV/0!") presents in the data.
+
+```{r, results='hide'}
+options(warn=-1)
+library(randomForest)
+library(caret)
+library(Hmisc)
+library(foreach)
+library(doParallel)
+set.seed(1405)
+
+TrainData <- read.csv("pml-training.csv", na.strings=c("#DIV/0!") )
+TestData <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!") )
+```
+
+The below code cast the string into numeric for calculation. 
+```{r, results='hide'}
+for(i in c(8:ncol(TrainData)-1)) {TrainData[,i] = as.numeric(as.character(TrainData[,i]))}
+for(i in c(8:ncol(TestData)-1)) {TestData[,i] = as.numeric(as.character(TestData[,i]))}
+```
+
+We want to remove columns (among 1 to 7) that are empty as those column cannot contribute to prediction at all
+```{r}
+featureData <- TrainData[colnames(TrainData[colSums(is.na(TrainData)) == 0])[-(1:7)]]
+```
+
+The next step is to split the data into 1/4 and 3/4 for Training Data Set and Testing Data Set
+
+```{r}
+selectedDP <- createDataPartition(y=featureData$classe, p=3/4, list=FALSE )
+TrainSet <- featureData[selectedDP,]
+TestSet <- featureData[-selectedDP,]
+```
+
+Now, we shall start building 150 trees of 6 random forests using parellel processing method to develop the model of prediction.  The total trees shall be 150 X 6 = 900!
+
+```{r}
+registerDoParallel()
+x <- TrainSet[-ncol(TrainSet)]
+y <- TrainSet$classe
+TreeModel <- foreach(ntree=rep(150, 6), .combine=randomForest::combine, .packages='randomForest') %dopar% {randomForest(x, y, ntree=ntree)}
+```
+
+Let's check on the Training Prediction model.
+
+```{r}
+TrainPredictions <- predict(TreeModel, newdata=TrainSet)
+confusionMatrix(TrainPredictions,TrainSet$classe)
+```
+
+Next is the Testing Prediction model.
+
+```{r}
+TestPredictions <- predict(TreeModel, newdata=TrainSet)
+confusionMatrix(TestPredictions,TrainSet$classe)
+```
+
+## Conclusion
+We can see that the prediction model is very accurate (accuracy of 99.7%).
